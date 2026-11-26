@@ -15,13 +15,12 @@ final class PlayerGps {
     }
 
     private static boolean allowCommand(String command) {
+        if (SaveMode.isPaused()) return true;
         if (!command.startsWith(COMMAND)
                 || (command.length() > COMMAND.length() && !Character.isWhitespace(command.charAt(COMMAND.length())))) {
             return true;
         }
-        if (!SaveMode.isPaused()) {
-            showCoordinates(Minecraft.getInstance(), command.substring(COMMAND.length()).strip());
-        }
+        showCoordinates(Minecraft.getInstance(), command.substring(COMMAND.length()).strip());
         return false;
     }
 

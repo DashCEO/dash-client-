@@ -73,9 +73,9 @@ public final class Friends {
     }
 
     static boolean allowCommand(String command) {
+        if (SaveMode.isPaused()) return true;
         String[] parts = command.strip().split("\\s+", 3);
         if (!parts[0].equalsIgnoreCase("friend")) return true;
-        if (SaveMode.isPaused()) return false;
 
         Minecraft client = Minecraft.getInstance();
         if (parts.length == 2 && parts[1].equalsIgnoreCase("list")) {

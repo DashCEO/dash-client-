@@ -26,8 +26,8 @@ public final class AttackSpeedCheck {
     static void register() {
         ClientTickEvents.END_CLIENT_TICK.register(client -> sample(client, false));
         ClientSendMessageEvents.ALLOW_COMMAND.register(command -> {
-            if (!command.strip().equalsIgnoreCase("dashspeed")) return true;
-            if (!SaveMode.isPaused()) show(Minecraft.getInstance());
+            if (SaveMode.isPaused() || !command.strip().equalsIgnoreCase("dashspeed")) return true;
+            show(Minecraft.getInstance());
             return false;
         });
     }

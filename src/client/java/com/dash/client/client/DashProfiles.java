@@ -43,14 +43,11 @@ final class DashProfiles {
     }
 
     private static boolean allowCommand(String command) {
+        if (SaveMode.isPaused()) return true;
         String[] parts = command.strip().split("\\s+", 3);
         if (!parts[0].equalsIgnoreCase("config") && !parts[0].equalsIgnoreCase("cfg")) return true;
 
         Minecraft client = Minecraft.getInstance();
-        if (SaveMode.isPaused()) {
-            message(client, "Dash Client зараз на паузі.");
-            return false;
-        }
         if (parts.length == 2 && parts[1].equalsIgnoreCase("list")) {
             listProfiles(client);
             return false;

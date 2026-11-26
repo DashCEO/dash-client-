@@ -35,6 +35,33 @@ function Find-DashJdk25 {
     }
 }
 
+function Find-DashLocalGradle([string]$cache) {
+    $properties = Join-Path $PSScriptRoot 'gradle/wrapper/gradle-wrapper.properties'
+    $distribution = Select-String -LiteralPath $properties -Pattern '^distributionUrl=.*/gradle-([0-9.]+)-(bin|all)\.zip\s*$'
+    if (!$distribution) { throw 'Could not read the Gradle version from gradle-wrapper.properties.' }
+    $version = $distribution.Matches[0].Groups[1].Value
+    $type = $distribution.Matches[0].Groups[2].Value
+
+    $candidates = @(
+        $env:GRADLE_HOME
+        $distributions = Join-Path $cache "wrapper/dists/gradle-$version-$type"
+        foreach ($directory in Get-ChildItem -LiteralPath $distributions -Directory -ErrorAction SilentlyContinue) {
+            Join-Path $directory.FullName "gradle-$version"
+        }
+    )
+
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        $launcher = Join-Path $candidate 'bin/gradle.bat'
+        $launcherLibrary = Join-Path $candidate "lib/gradle-launcher-$version.jar"
+        if ((Test-Path -LiteralPath $launcher -PathType Leaf) -and
+                (Test-Path -LiteralPath $launcherLibrary -PathType Leaf)) {
+            return (Resolve-Path -LiteralPath $launcher).Path
+        }
+    }
+    throw "Gradle $version is missing locally. Set GRADLE_HOME to an existing Gradle $version installation or GRADLE_USER_HOME to a cache containing it. No download was attempted."
+}
+
 function Test-SharingViolation($errorRecord) {
     $exception = $errorRecord.Exception.GetBaseException()
     return $exception -is [IO.IOException] -and ($exception.HResult -band 0xFFFF) -in 32, 33
@@ -90,23 +117,19 @@ function Clear-DashVulkanSelection {
     Remove-Item Env:VK_LOADER_DRIVERS_SELECT,Env:VK_LOADER_VENDOR_ID_FILTER,Env:VK_LOADER_DEVICE_ID_FILTER -ErrorAction SilentlyContinue
 }
 
-function Set-DashOpenGlWindowed([string]$gameDir) {
-    $optionsPath = Join-Path $gameDir 'options.txt'
-    if (!(Test-Path -LiteralPath $optionsPath -PathType Leaf)) { return }
-
-    $current = [IO.File]::ReadAllText($optionsPath)
-    $updated = [regex]::Replace($current, '(?m)^fullscreen:true(?=\r?$)', 'fullscreen:false')
-    if ($updated -ceq $current) { return }
-
-    # Change the video mode only after the launch lock has been acquired.
-    $tempPath = "$optionsPath.dash-$([Guid]::NewGuid().ToString('N')).tmp"
+function Set-DashHighPerformanceGpu([string]$jdkHome) {
+    $javaPath = (Resolve-Path -LiteralPath (Join-Path $jdkHome 'bin/java.exe')).Path
+    $preferences = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\DirectX\UserGpuPreferences')
     try {
-        [IO.File]::WriteAllText($tempPath, $updated, [Text.UTF8Encoding]::new($false))
-        [IO.File]::Replace($tempPath, $optionsPath, [NullString]::Value)
-    } finally {
-        if (Test-Path -LiteralPath $tempPath -PathType Leaf) {
-            Remove-Item -LiteralPath $tempPath
+        $current = [string]$preferences.GetValue($javaPath, '')
+        if ($current -notmatch '(?:^|;)GpuPreference=2(?:;|$)') {
+            $otherSettings = @($current -split ';' | Where-Object { $_ -and $_ -notmatch '^GpuPreference=' })
+            $updated = (@('GpuPreference=2') + $otherSettings) -join ';'
+            $preferences.SetValue($javaPath, "$updated;", [Microsoft.Win32.RegistryValueKind]::String)
         }
+        Write-Host "Windows graphics preference: High performance ($javaPath)"
+    } finally {
+        $preferences.Dispose()
     }
 }
 
@@ -139,35 +162,22 @@ function Test-DashProfileHasSodium([string]$gameDir) {
 function Get-DashSodiumJar([string]$gameDir) {
     if (Test-DashProfileHasSodium $gameDir) { return }
 
+    if ($env:DASH_SODIUM_JAR) {
+        if (!(Test-Path -LiteralPath $env:DASH_SODIUM_JAR -PathType Leaf)) {
+            throw "DASH_SODIUM_JAR does not point to an existing file: $env:DASH_SODIUM_JAR"
+        }
+        return (Resolve-Path -LiteralPath $env:DASH_SODIUM_JAR).Path
+    }
+
     $legacy = Join-Path $PSScriptRoot 'run/mods/sodium-fabric-0.8.14-mc1.21.11.jar'
     if (Test-Path -LiteralPath $legacy -PathType Leaf) { return $legacy }
 
-    $directory = Join-Path $PSScriptRoot '.gradle/dash-runtime'
-    $jar = Join-Path $directory 'sodium-fabric-0.8.14+mc1.21.11.jar'
-    $url = 'https://cdn.modrinth.com/data/AANobbMI/versions/rkdTcxoT/sodium-fabric-0.8.14%2Bmc1.21.11.jar'
+    $jar = Join-Path $PSScriptRoot '.gradle/dash-runtime/sodium-fabric-0.8.14+mc1.21.11.jar'
     $sha512 = '04C43F9E8534B87A52C42FFD51B0E344D4EF92DC9CC52DA33D13AF6A18BF74B05380D2027F1E0DB982698D0AFF274C42741C1E21B313B0CD75ED3AF005FC98D9'
-    $temporary = "$jar.$([Guid]::NewGuid().ToString('N')).tmp"
-    try {
-        if ((Test-Path -LiteralPath $jar -PathType Leaf) -and
-                (Get-FileHash -LiteralPath $jar -Algorithm SHA512).Hash -eq $sha512) { return $jar }
+    if ((Test-Path -LiteralPath $jar -PathType Leaf) -and
+            (Get-FileHash -LiteralPath $jar -Algorithm SHA512).Hash -eq $sha512) { return $jar }
 
-        [void][IO.Directory]::CreateDirectory($directory)
-        Write-Host 'Downloading Sodium 0.8.14 for Minecraft 1.21.11 (OpenGL)...'
-        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temporary -TimeoutSec 12
-        if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA512).Hash -ne $sha512) {
-            throw 'Downloaded Sodium does not match its published SHA-512.'
-        }
-        if ([IO.File]::Exists($jar)) {
-            [IO.File]::Replace($temporary, $jar, [NullString]::Value)
-        } else {
-            [IO.File]::Move($temporary, $jar)
-        }
-        return $jar
-    } catch {
-        Write-Warning "Sodium is unavailable: $($_.Exception.Message) Starting with the default renderer."
-    } finally {
-        if ([IO.File]::Exists($temporary)) { Remove-Item -LiteralPath $temporary -ErrorAction SilentlyContinue }
-    }
+    Write-Warning 'Local Sodium was not found or its cached copy is invalid. Using the standard OpenGL renderer. Set DASH_SODIUM_JAR to a compatible local Sodium JAR to enable it.'
 }
 
 function Test-DashNvidiaOpenGlFailure([string]$gameDir, [datetime]$sinceUtc) {
@@ -189,18 +199,58 @@ function Read-DashNickname([string]$path) {
     if ($nickname -cmatch '^[A-Za-z0-9_]{3,16}$') { return $nickname }
 }
 
-$gradleDir = Join-Path $PSScriptRoot '.gradle'
-[void][IO.Directory]::CreateDirectory($gradleDir)
-$lockPath = Join-Path $gradleDir 'dash-client-launch.lock'
+$lock = $null
 try {
-    $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-} catch {
-    if (!(Test-SharingViolation $_)) { throw }
-    Write-Host 'Dash Client is already running or starting. Use the open Minecraft window.'
-    exit 0
-}
+    $dashJar = if ($env:DASH_CLIENT_JAR) { $env:DASH_CLIENT_JAR } else {
+        Join-Path $PSScriptRoot 'dash-client-1.0.0.jar'
+    }
+    $sourceAvailable = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'build.gradle') -PathType Leaf
+    $jarMode = $env:DASH_USE_GRADLE -ne '1' -and (
+        $env:DASH_CLIENT_JAR -or !$sourceAvailable -or (Test-Path -LiteralPath $dashJar -PathType Leaf))
+    $rtxProfile = $env:DASH_RTX_PROFILE -eq '1'
+    $runDir = Join-Path $PSScriptRoot 'run'
+    $profileDir = if ($jarMode -and $env:DASH_GAME_DIR) {
+        [IO.Path]::GetFullPath($env:DASH_GAME_DIR)
+    } elseif ($rtxProfile) {
+        Join-Path $runDir 'rtx-profile'
+    } else { $runDir }
+    $lockDir = if ($jarMode -and $env:DASH_GAME_DIR) { $profileDir } else { $runDir }
+    [void][IO.Directory]::CreateDirectory($lockDir)
+    $lockPath = Join-Path $lockDir 'dash-client-launch.lock'
+    try {
+        $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    } catch {
+        if (!(Test-SharingViolation $_)) { throw }
+        Write-Host 'Dash Client is already running or starting. Use the open Minecraft window.'
+        exit 0
+    }
 
-try {
+    $jdk25 = Find-DashJdk25
+    if (!$jdk25) {
+        Write-Host '[ERROR] JDK 25 not found. Install a Windows JDK 25 or point JAVA_HOME to your existing JDK 25 directory.'
+        Write-Host 'CMD example: set "JAVA_HOME=D:\Java\jdk-25"'
+        exit 1
+    }
+    $env:JAVA_HOME = $jdk25
+
+    if ($jarMode) {
+        $jarRunner = Join-Path $PSScriptRoot 'RunDashJar.ps1'
+        if (!(Test-Path -LiteralPath $jarRunner -PathType Leaf)) {
+            throw 'RunDashJar.ps1 is missing. Extract the complete Dash JAR release.'
+        }
+        . $jarRunner
+        [void][IO.Directory]::CreateDirectory($profileDir)
+        exit (Invoke-DashJar $jdk25 $dashJar $profileDir $rtxProfile)
+    }
+
+    foreach ($relativeFile in @('build.gradle', 'settings.gradle', 'gradle.properties',
+            'gradle/wrapper/gradle-wrapper.properties', 'src/main/resources/fabric.mod.json',
+            'src/client/java/com/dash/client/client/DashClientClient.java')) {
+        if (!(Test-Path -LiteralPath (Join-Path $PSScriptRoot $relativeFile) -PathType Leaf)) {
+            throw "Required project file is missing: $relativeFile. Extract the full Dash Client project."
+        }
+    }
+
     $cachePaths = @('run\.fabric\processedMods', 'run\rtx-profile\.fabric\processedMods')
     foreach ($relativeCache in $cachePaths) {
         $cache = Join-Path $PSScriptRoot $relativeCache
@@ -219,28 +269,24 @@ try {
         }
     }
 
-    $jdk25 = Find-DashJdk25
-    if (!$jdk25) {
-        Write-Host '[ERROR] JDK 25 not found. Install a Windows JDK 25 or point JAVA_HOME to your existing JDK 25 directory.'
-        Write-Host 'CMD example: set "JAVA_HOME=D:\Java\jdk-25"'
-        exit 1
+    $gradleCache = $env:GRADLE_USER_HOME
+    if (!$gradleCache) { $gradleCache = Join-Path $env:USERPROFILE '.gradle' }
+    $gradle = Find-DashLocalGradle $gradleCache
+    $offlineArgs = @('--offline', '--no-daemon', '-g', $gradleCache,
+        "-Dorg.gradle.java.home=$jdk25", '-Porg.gradle.java.installations.auto-download=false')
+    if ($env:DASH_RTX_PROFILE -eq '1') {
+        Set-DashHighPerformanceGpu $jdk25
+        $offlineArgs += @('-Porg.gradle.java.installations.auto-detect=false',
+            "-Porg.gradle.java.installations.paths=$jdk25")
     }
-    $env:JAVA_HOME = $jdk25
+    Write-Host "Dash offline launch. Gradle cache: $gradleCache"
+    Write-Host "JDK 25: $jdk25"
 
     $nicknamePath = Join-Path $PSScriptRoot 'run/dash-nickname.txt'
     $nickname = Read-DashNickname $nicknamePath
     $env:DASH_NICKNAME_FILE = $nicknamePath
     $env:DASH_SKIP_STARTUP = $null
-    $env:DASH_SODIUM_JAR = $null
-    $runtimeArgs = @()
-    $jdkRoot = Join-Path $env:ProgramFiles 'Eclipse Adoptium'
-    $jdk21 = Get-ChildItem -LiteralPath $jdkRoot -Filter 'jdk-21.*' -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'bin/java.exe') -PathType Leaf } |
-        Select-Object -First 1
-    if ($jdk21) {
-        $runtimeArgs += '-PdashGameJava21'
-    }
-    $gradleArgs = @('runClient')
+    $gradleTask = 'runClient'
     $rtxDir = Join-Path $PSScriptRoot 'run/rtx-profile'
     $launchVulkan = $false
     $launchOpenGl = $false
@@ -255,27 +301,25 @@ try {
         $env:VK_LOADER_DRIVERS_SELECT = 'nv-vk64.json'
         $env:VK_LOADER_VENDOR_ID_FILTER = '0x10de'
         $env:VK_LOADER_DEVICE_ID_FILTER = '0x2f04'
-        $gradleArgs = @('--no-daemon', 'runRtxClient')
+        $gradleTask = 'runRtxClient'
         Write-Host 'Starting Dash Client RTX (Vulkan)...'
     } elseif ($env:DASH_RTX_PROFILE -eq '1') {
         $launchOpenGl = $true
         Clear-DashVulkanSelection
-        Set-DashOpenGlWindowed $rtxDir
         $env:DASH_SODIUM_JAR = Get-DashSodiumJar $rtxDir
-        $gradleArgs = @('--no-daemon', 'runRtxSafeClient')
+        $gradleTask = 'runRtxSafeClient'
         Write-Host 'Starting the Dash RTX profile with borderless OpenGL (840 FPS cap)...'
     } else {
         Write-Host 'Starting Dash Client...'
     }
     Push-Location -LiteralPath $PSScriptRoot
     try {
-        $gradleWrapper = Join-Path $PSScriptRoot 'gradlew.bat'
         do {
             $needsNickname = [string]::IsNullOrEmpty($nickname)
             $env:DASH_NICKNAME_SETUP = if ($needsNickname) { '1' } else { $null }
             $userArgument = if ($needsNickname) { '--args=--disableMultiplayer' } else { "--args=--username $nickname" }
             $launchTimeUtc = [datetime]::UtcNow
-            & $gradleWrapper @runtimeArgs @gradleArgs $userArgument
+            & $gradle @offlineArgs $gradleTask $userArgument
             $exitCode = $LASTEXITCODE
             if ($launchVulkan -and $exitCode -ne 0) {
                 $rendererFailure = Get-DashRendererFailure $rtxDir $launchTimeUtc
@@ -284,12 +328,11 @@ try {
                 } elseif ($rendererFailure) {
                     Write-Host "$rendererFailure. Restarting once with OpenGL in the same game profile."
                     Clear-DashVulkanSelection
-                    Set-DashOpenGlWindowed $rtxDir
                     $env:DASH_SODIUM_JAR = Get-DashSodiumJar $rtxDir
                     $launchVulkan = $false
                     $launchOpenGl = $true
-                    $gradleArgs = @('--no-daemon', 'runRtxSafeClient')
-                    & $gradleWrapper @runtimeArgs @gradleArgs $userArgument
+                    $gradleTask = 'runRtxSafeClient'
+                    & $gradle @offlineArgs $gradleTask $userArgument
                     $exitCode = $LASTEXITCODE
                 }
             } elseif ($launchOpenGl -and $exitCode -ne 0 -and
@@ -307,7 +350,13 @@ try {
     } finally {
         Pop-Location
     }
+    if ($exitCode -ne 0) {
+        Write-Host '[ERROR] Offline launch failed. If Gradle reports a missing dependency or asset, point GRADLE_USER_HOME to an existing cache with this Minecraft/Fabric version.'
+    }
     exit $exitCode
+} catch {
+    Write-Host "[ERROR] $($_.Exception.Message)"
+    exit 1
 } finally {
-    $lock.Dispose()
+    if ($null -ne $lock) { $lock.Dispose() }
 }

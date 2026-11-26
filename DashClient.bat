@@ -7,8 +7,8 @@ pushd "%~dp0" || (
     exit /b 1
 )
 
-if not exist "%~dp0gradlew.bat" (
-    echo [ERROR] Gradle wrapper not found next to DashClient.bat.
+if not exist "%~dp0RunDashClient.ps1" (
+    echo [ERROR] RunDashClient.ps1 is missing. Extract the complete local project.
     set "DASH_EXIT_CODE=1"
     goto finish
 )

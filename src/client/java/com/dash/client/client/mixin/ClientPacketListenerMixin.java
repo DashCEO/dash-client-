@@ -18,19 +18,13 @@ import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPlayerInventoryPacket;
 import net.minecraft.network.protocol.game.ClientboundUpdateAttributesPacket;
-import net.minecraft.network.syncher.EntityDataSerializers;
-import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.ArrayList;
-import java.util.List;
 
 @Mixin(ClientPacketListener.class)
 public class ClientPacketListenerMixin {
@@ -94,23 +88,4 @@ public class ClientPacketListenerMixin {
         Velocity.onPositionCorrection(packet);
     }
 
-    @ModifyArg(method = "handleSetEntityData", at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/network/syncher/SynchedEntityData;assignValues(Ljava/util/List;)V"))
-    private List<SynchedEntityData.DataValue<?>> dashNoFire(List<SynchedEntityData.DataValue<?>> values) {
-        if (!DashClientClient.isNoFireEnabled()) {
-            return values;
-        }
-
-        for (int i = 0; i < values.size(); i++) {
-            var value = values.get(i);
-            if (value.id() == 0 && value.value() instanceof Byte flags && (flags & 1) != 0) {
-                // Preserve every other flag and metadata entry, including absorption.
-                var filtered = new ArrayList<>(values);
-                filtered.set(i, new SynchedEntityData.DataValue<>(value.id(),
-                        EntityDataSerializers.BYTE, (byte) (flags & ~1)));
-                return filtered;
-            }
-        }
-        return values;
-    }
 }

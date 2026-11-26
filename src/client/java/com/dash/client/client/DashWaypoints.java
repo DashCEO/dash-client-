@@ -76,13 +76,12 @@ public final class DashWaypoints {
     }
 
     private static boolean allowCommand(String command) {
+        if (SaveMode.isPaused()) return true;
         String arguments = commandArguments(command);
         if (arguments == null) {
             return true;
         }
-        if (!SaveMode.isPaused()) {
-            runCommand(Minecraft.getInstance(), arguments);
-        }
+        runCommand(Minecraft.getInstance(), arguments);
         return false;
     }
 

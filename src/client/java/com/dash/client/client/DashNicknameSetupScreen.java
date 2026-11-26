@@ -61,7 +61,7 @@ final class DashNicknameSetupScreen extends Screen {
 
         if (Boolean.getBoolean("dash.launcherNicknameSetup")) {
             ClientTickEvents.END_CLIENT_TICK.register(client -> {
-                if (client.getOverlay() == null && client.screen instanceof TitleScreen) {
+                if (!SaveMode.isPaused() && client.getOverlay() == null && client.screen instanceof TitleScreen) {
                     client.setScreen(new DashNicknameSetupScreen(nicknameFile, null, ""));
                 }
             });
@@ -69,7 +69,7 @@ final class DashNicknameSetupScreen extends Screen {
         }
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-            if (screen instanceof TitleScreen) {
+            if (!SaveMode.isPaused() && screen instanceof TitleScreen) {
                 Component label = Component.literal(text("Змінити нік", "Изменить ник", "Change nickname"));
                 Screens.getButtons(screen).add(Button.builder(label, button ->
                                 client.setScreen(new DashNicknameSetupScreen(nicknameFile, screen, client.getUser().getName())))

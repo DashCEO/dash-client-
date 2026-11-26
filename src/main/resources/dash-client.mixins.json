@@ -43,6 +43,8 @@
     "NameProtectSidebarMixin",
     "NameProtectNametagMixin",
     "NameProtectTooltipMixin",
+    "NoFireEntityRendererMixin",
+    "NoFireScreenEffectMixin",
     "PlayerEspMixin"
   ],
   "injectors": {
