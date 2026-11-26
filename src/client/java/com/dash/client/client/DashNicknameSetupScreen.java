@@ -2,6 +2,8 @@ package com.dash.client.client;
 
 import com.mojang.logging.LogUtils;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.Screens;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -25,15 +27,20 @@ final class DashNicknameSetupScreen extends Screen {
     private static final int PANEL_HEIGHT = 110;
 
     private final Path nicknameFile;
-    private String draft = "";
+    private final Screen parent;
+    private final String initialNickname;
+    private String draft;
     private boolean saveFailed;
     private int panelWidth;
     private int left;
     private int top;
 
-    private DashNicknameSetupScreen(Path nicknameFile) {
+    private DashNicknameSetupScreen(Path nicknameFile, Screen parent, String initialNickname) {
         super(Component.literal(text("Профіль Dash", "Профиль Dash", "Dash profile")));
         this.nicknameFile = nicknameFile;
+        this.parent = parent;
+        this.initialNickname = initialNickname;
+        this.draft = initialNickname;
     }
 
     static void register() {
@@ -52,9 +59,21 @@ final class DashNicknameSetupScreen extends Screen {
             return;
         }
 
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.getOverlay() == null && client.screen instanceof TitleScreen) {
-                client.setScreen(new DashNicknameSetupScreen(nicknameFile));
+        if (Boolean.getBoolean("dash.launcherNicknameSetup")) {
+            ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                if (client.getOverlay() == null && client.screen instanceof TitleScreen) {
+                    client.setScreen(new DashNicknameSetupScreen(nicknameFile, null, ""));
+                }
+            });
+            return;
+        }
+
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (screen instanceof TitleScreen) {
+                Component label = Component.literal(text("Змінити нік", "Изменить ник", "Change nickname"));
+                Screens.getButtons(screen).add(Button.builder(label, button ->
+                                client.setScreen(new DashNicknameSetupScreen(nicknameFile, screen, client.getUser().getName())))
+                        .bounds(8, 8, 110, 20).build());
             }
         });
     }
@@ -77,21 +96,27 @@ final class DashNicknameSetupScreen extends Screen {
                         "Зберегти й перезапустити", "Сохранить и перезапустить", "Save and restart")),
                         button -> saveNickname())
                 .bounds(contentX, top + 80, saveWidth, 20).build());
-        save.active = NICKNAME.matcher(draft).matches();
+        save.active = canSave();
         input.setResponder(value -> {
             draft = value;
-            save.active = NICKNAME.matcher(value).matches();
+            save.active = canSave();
             saveFailed = false;
         });
 
-        addRenderableWidget(Button.builder(Component.literal(text("Вийти", "Выйти", "Quit")),
-                        button -> onClose())
+        String dismissLabel = parent == null
+                ? text("Вийти", "Выйти", "Quit")
+                : text("Скасувати", "Отмена", "Cancel");
+        addRenderableWidget(Button.builder(Component.literal(dismissLabel), button -> onClose())
                 .bounds(contentX + saveWidth + 6, top + 80, contentWidth - saveWidth - 6, 20).build());
         setInitialFocus(input);
     }
 
+    private boolean canSave() {
+        return !initialNickname.equals(draft) && NICKNAME.matcher(draft).matches();
+    }
+
     private void saveNickname() {
-        if (!NICKNAME.matcher(draft).matches()) return;
+        if (!canSave()) return;
 
         try {
             Path directory = nicknameFile.getParent();
@@ -130,6 +155,10 @@ final class DashNicknameSetupScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.stop();
+        if (parent == null) {
+            minecraft.stop();
+        } else {
+            minecraft.setScreen(parent);
+        }
     }
 }

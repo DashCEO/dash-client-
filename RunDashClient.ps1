@@ -126,8 +126,7 @@ try {
 
     $nicknamePath = Join-Path $PSScriptRoot 'run/dash-nickname.txt'
     $nickname = Read-DashNickname $nicknamePath
-    $needsNickname = [string]::IsNullOrEmpty($nickname)
-    $env:DASH_NICKNAME_SETUP_FILE = if ($needsNickname) { $nicknamePath } else { $null }
+    $env:DASH_NICKNAME_FILE = $nicknamePath
     $env:DASH_SKIP_STARTUP = $null
     $runtimeArgs = @()
     $jdkRoot = Join-Path $env:ProgramFiles 'Eclipse Adoptium'
@@ -166,7 +165,9 @@ try {
     Push-Location -LiteralPath $PSScriptRoot
     try {
         $gradleWrapper = Join-Path $PSScriptRoot 'gradlew.bat'
-        for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        do {
+            $needsNickname = [string]::IsNullOrEmpty($nickname)
+            $env:DASH_NICKNAME_SETUP = if ($needsNickname) { '1' } else { $null }
             $userArgument = if ($needsNickname) { '--args=--disableMultiplayer' } else { "--args=--username $nickname" }
             $launchTimeUtc = [datetime]::UtcNow
             & $gradleWrapper @runtimeArgs @gradleArgs $userArgument
@@ -190,14 +191,13 @@ try {
                 Write-Host 'The NVIDIA OpenGL driver failed while presenting a frame. See the latest hs_err_pid log in run/rtx-profile.'
             }
 
-            if (!$needsNickname -or $exitCode -ne 0) { break }
-            $nickname = Read-DashNickname $nicknamePath
-            if ([string]::IsNullOrEmpty($nickname)) { break }
+            if ($exitCode -ne 0) { break }
+            $savedNickname = Read-DashNickname $nicknamePath
+            if ([string]::IsNullOrEmpty($savedNickname) -or $savedNickname -ceq $nickname) { break }
             Write-Host 'Nickname saved. Restarting Dash Client with the selected profile.'
-            $needsNickname = $false
-            $env:DASH_NICKNAME_SETUP_FILE = $null
+            $nickname = $savedNickname
             $env:DASH_SKIP_STARTUP = '1'
-        }
+        } while ($true)
     } finally {
         Pop-Location
     }
