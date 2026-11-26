@@ -23,6 +23,13 @@ import org.slf4j.Logger;
 
 /** Local preferences for the Dash surfaces. The game renderer and resource-pack settings have their own options. */
 final class DashAppearance {
+    static final int MENU_PINK = 0xFFF48BC4;
+    static final int MENU_ICE = 0xFF8DDCF5;
+    static final int MENU_VIOLET = 0xFFB39AF7;
+    static final int MENU_SURFACE = 0xFF15141C;
+    static final int MENU_CONTROL = 0xFF1E1C28;
+    static final int MENU_BORDER = 0xFF383344;
+    private static final int MENU_BASE = 0xFF0D0C12;
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Pattern THEME_NAME = Pattern.compile("[\\p{L}\\p{M}\\p{N} _-]{1,32}");
@@ -93,15 +100,23 @@ final class DashAppearance {
     static boolean hasCustomAccent() { return accentOverride != 0; }
     static int accentTarget() { return accentOverride == 0 ? HudSettings.presetAccent() : accentOverride; }
     static int background() { return backgroundOverride == 0 ? HudSettings.presetBackground() : backgroundOverride; }
+    static String menuThemeName() { return HudSettings.isObsidian() ? "Eclipse" : HudSettings.themeName(); }
+    static int menuAccentTarget() {
+        return !hasCustomAccent() && HudSettings.isObsidian() ? MENU_PINK : accentTarget();
+    }
+    static int menuAccent() {
+        return !hasCustomAccent() && HudSettings.isObsidian() ? MENU_PINK : accent();
+    }
+    static int menuBackground() {
+        if (backgroundOverride != 0) return backgroundOverride;
+        return HudSettings.isObsidian() ? MENU_BASE : ARGB.srgbLerp(.42F, MENU_BASE, HudSettings.presetBackground());
+    }
     static float panelOpacity() { return Metric.OPACITY.value(); }
     static int cornerRadius() { return Math.round(Metric.RADIUS.value()); }
     static float uiScale() { return Metric.UI_SCALE.value(); }
     static float fontScale() { return Metric.FONT_SCALE.value(); }
     static float animationScale() { return Metric.ANIMATION.value(); }
-    static float glow() { return Metric.GLOW.value(); }
     static int hudSpacing() { return Math.round(Metric.SPACING.value()); }
-    static float refraction() { return Metric.REFRACTION.value(); }
-    static float chromatic() { return Metric.CHROMATIC.value(); }
     static boolean blur() { return HudSettings.blur(); }
     static boolean glass() { return glass; }
 
@@ -138,46 +153,9 @@ final class DashAppearance {
 
     static void drawPanel(GuiGraphics graphics, int x, int y, int right, int bottom, int base, boolean active) {
         int radius = Math.min(cornerRadius(), Math.min(right - x, bottom - y) / 2);
-        int accent = accent();
-        int contrast = active ? 0xFF454956 : 0xFF373B44;
-        if (active) {
-            contrast = ARGB.srgbLerp(.44F, contrast, accent);
-            int halo = Math.round(32.0F * glow());
-            if (halo > 0) DashShape.fill(graphics, x - 1, y - 1, right + 1, bottom + 1, radius + 1, alpha(accent, halo));
-        }
-        DashShape.fill(graphics, x, y, right, bottom, radius, panel(base));
-        stroke(graphics, x, y, right, bottom, radius, alpha(contrast, 145));
-        if (!glass) return;
-        int inset = Math.max(3, Math.min(radius, (right - x) / 3));
-        if (right - x <= inset * 2 || bottom - y < 10) return;
-        int insetEnd = right - inset;
-        graphics.fillGradient(x + inset, y + 2, insetEnd, y + Math.min(22, (bottom - y) / 2),
-                0x16FFFFFF, 0x00FFFFFF);
-        int offset = Math.round(refraction() * 5.0F);
-        if (offset != 0 && insetEnd - x - inset > 2 * offset) {
-            graphics.fillGradient(x + inset + offset, y + 2 + offset, insetEnd - offset,
-                    y + 4 + offset, 0x20FFFFFF, 0x00FFFFFF);
-        }
-        int spread = Math.round(chromatic() * 24.0F);
-        if (spread != 0) {
-            graphics.hLine(x + inset, insetEnd - 1, y + 1, alpha(0xFFFF7FA8, spread));
-            graphics.hLine(x + inset, insetEnd - 1, bottom - 2, alpha(0xFF78D9FF, spread));
-        }
-    }
-
-    private static void stroke(GuiGraphics graphics, int x, int y, int right, int bottom, int radius, int color) {
-        int edgeStart = x + Math.max(radius - 1, 0);
-        int edgeEnd = right - Math.max(radius - 1, 0);
-        if (edgeEnd > edgeStart) {
-            graphics.hLine(edgeStart, edgeEnd - 1, y, color);
-            graphics.hLine(edgeStart, edgeEnd - 1, bottom - 1, color);
-        }
-        int sideStart = y + Math.max(radius - 1, 1);
-        int sideEnd = bottom - Math.max(radius - 1, 1);
-        if (sideEnd > sideStart) {
-            graphics.vLine(x, sideStart - 1, sideEnd, color);
-            graphics.vLine(right - 1, sideStart - 1, sideEnd, color);
-        }
+        int edge = active ? ARGB.srgbLerp(.45F, MENU_BORDER, menuAccent()) : MENU_BORDER;
+        DashShape.frame(graphics, x, y, right, bottom, radius,
+                alpha(edge, Math.round((base >>> 24) * .72F)), panel(base));
     }
 
     static void setAccent(int argb) {

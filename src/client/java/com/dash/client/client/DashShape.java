@@ -6,7 +6,7 @@ import net.minecraft.resources.Identifier;
 
 public final class DashShape {
     private static final Identifier CORNERS = Identifier.fromNamespaceAndPath("dash-client", "textures/gui/round_corners.png");
-    private static final int CORNER_SIZE = 32;
+    private static final int CORNER_SIZE = 128;
     private static final int TEXTURE_SIZE = CORNER_SIZE * 2;
 
     private DashShape() {}

@@ -15,8 +15,8 @@ import net.minecraft.util.Mth;
 final class DashAppearanceScreen extends Screen {
     private static final int TEXT = 0xFFF1F4F8;
     private static final int MUTED = 0xFFA8B2C0;
-    private static final int CONTROL = 0xFF1C2027;
-    private static final int BORDER = 0xFF373E49;
+    private static final int CONTROL = DashAppearance.MENU_CONTROL;
+    private static final int BORDER = DashAppearance.MENU_BORDER;
     private static final int GAP = 6;
     private static final Page[] PAGES = Page.values();
 
@@ -38,12 +38,12 @@ final class DashAppearanceScreen extends Screen {
     @Override
     protected void init() {
         uiFont = DashTypography.font(font);
-        panelWidth = Math.max(1, Math.min(width - 12, 426));
-        panelHeight = Math.max(1, Math.min(height - 12, 222));
+        panelWidth = Math.max(1, Math.min(width - 12, 320));
+        panelHeight = Math.max(1, Math.min(height - 12, 167));
         panelX = (width - panelWidth) / 2;
         panelY = (height - panelHeight) / 2;
         bodyY = panelY + 54;
-        step = Math.min(25, Math.max(13, (panelHeight - 100) / 4));
+        step = Math.min(20, Math.max(17, (panelHeight - 104) / 3));
         controlHeight = step - 3;
         int inner = innerWidth();
         half = (inner - GAP) / 2;
@@ -72,9 +72,9 @@ final class DashAppearanceScreen extends Screen {
         int w = Math.max(23, half - 48);
         int actionWidth = half - w - 4;
         accentCode = field(x(), bodyY + 11, w, controlHeight,
-                text("Акцент", "Акцент", "Accent color"), DashAppearance.hex(DashAppearance.accentTarget()), 7);
+                text("Акцент", "Акцент", "Accent color"), DashAppearance.hex(DashAppearance.menuAccentTarget()), 7);
         backgroundCode = field(rightColumn(), bodyY + 11, w, controlHeight,
-                text("Колір фону", "Цвет фона", "Background color"), DashAppearance.hex(DashAppearance.background()), 7);
+                text("Колір фону", "Цвет фона", "Background color"), DashAppearance.hex(DashAppearance.menuBackground()), 7);
         String apply = text("Застос.", "Примен.", "Apply");
         button(x() + w + 4, bodyY + 11, actionWidth, controlHeight, apply, true,
                 control -> applyColor(true));
@@ -91,24 +91,20 @@ final class DashAppearanceScreen extends Screen {
                             DashAppearance.blur())));
                     ((TileButton) control).selected = DashAppearance.blur();
                 });
-        button(rightColumn(), bodyY + 2 * step + 12, half, controlHeight,
-                flag(text("Скло", "Стекло", "Glass"), DashAppearance.glass()), DashAppearance.glass(),
-                control -> {
-                    DashAppearance.setGlass(!DashAppearance.glass());
-                    control.setMessage(Component.literal(flag(text("Скло", "Стекло", "Glass"),
-                            DashAppearance.glass())));
-                    ((TileButton) control).selected = DashAppearance.glass();
-                });
-        slider(DashAppearance.Metric.REFRACTION, false, bodyY + 3 * step + 12);
-        slider(DashAppearance.Metric.CHROMATIC, true, bodyY + 3 * step + 12);
+        int swatchW = (half - 8) / 3;
+        int swatchY = bodyY + 2 * step + 12;
+        swatch(rightColumn(), swatchY, swatchW, text("Рожевий", "Розовый", "Pink"), DashAppearance.MENU_PINK);
+        swatch(rightColumn() + swatchW + 4, swatchY, swatchW,
+                text("Лід", "Лёд", "Ice"), DashAppearance.MENU_ICE);
+        swatch(rightColumn() + 2 * (swatchW + 4), swatchY, half - 2 * swatchW - 8,
+                text("Фіолет", "Фиолет", "Violet"), DashAppearance.MENU_VIOLET);
     }
 
     private void buildMotion() {
         slider(DashAppearance.Metric.UI_SCALE, false, bodyY);
         slider(DashAppearance.Metric.FONT_SCALE, true, bodyY);
         slider(DashAppearance.Metric.ANIMATION, false, bodyY + step);
-        slider(DashAppearance.Metric.GLOW, true, bodyY + step);
-        slider(DashAppearance.Metric.SPACING, false, bodyY + 2 * step);
+        slider(DashAppearance.Metric.SPACING, true, bodyY + step);
     }
 
     private void buildThemes() {
@@ -148,6 +144,16 @@ final class DashAppearanceScreen extends Screen {
 
     private TileButton button(int x, int y, int width, int height, String label, boolean selected, Button.OnPress press) {
         return addRenderableWidget(new TileButton(x, y, width, height, Component.literal(label), selected, press));
+    }
+
+    private void swatch(int x, int y, int width, String label, int color) {
+        TileButton swatch = button(x, y, width, controlHeight, label, false, control -> {
+            DashAppearance.setAccent(color);
+            accentCode.setValue(DashAppearance.hex(color));
+            invalid = !DashAppearance.save();
+            status = invalid ? saveFailure() : "";
+        });
+        swatch.swatchColor = color;
     }
 
     private void applyColor(boolean accent) {
@@ -230,26 +236,22 @@ final class DashAppearanceScreen extends Screen {
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
         if (DashAppearance.blur() && minecraft.level != null) renderBlurredBackground(graphics);
-        graphics.fill(0, 0, width, height, 0x97060A11);
+        graphics.fill(0, 0, width, height, 0xA308070C);
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        DashShape.fill(graphics, panelX - 3, panelY + 4, panelX + panelWidth + 3, bottom() + 7,
-                DashAppearance.cornerRadius() + 3, 0x62000000);
         DashAppearance.drawPanel(graphics, panelX, panelY, panelX + panelWidth, bottom(),
-                DashAppearance.background(), true);
-        int accent = DashAppearance.accent();
+                DashAppearance.menuBackground(), false);
+        int accent = DashAppearance.menuAccent();
         DashShape.fill(graphics, x(), panelY + 12, x() + 4, panelY + 23, 2, accent);
         graphics.drawString(uiFont, title, x() + 10, panelY + 13, TEXT, false);
-        String preset = DashHud.fit(uiFont, HudSettings.themeName(), half);
+        String preset = DashHud.fit(uiFont, DashAppearance.menuThemeName(), half);
         graphics.drawString(uiFont, preset, x() + innerWidth() - uiFont.width(preset), panelY + 13, MUTED, false);
         if (page == Page.SURFACE) {
-            drawColorCaption(graphics, x(), accentCode.getMessage().getString(), DashAppearance.accentTarget());
-            drawColorCaption(graphics, rightColumn(), backgroundCode.getMessage().getString(), DashAppearance.background());
-        } else if (page == Page.MOTION) {
-            drawPreview(graphics);
-        } else {
+            drawColorCaption(graphics, x(), accentCode.getMessage().getString(), DashAppearance.menuAccentTarget());
+            drawColorCaption(graphics, rightColumn(), backgroundCode.getMessage().getString(), DashAppearance.menuBackground());
+        } else if (page == Page.THEMES) {
             String selected = themes.isEmpty() ? text("Немає збережених тем", "Нет сохранённых тем", "No saved themes")
                     : themes.get(themeIndex);
             selected = DashHud.fit(uiFont, selected, innerWidth() - 76);
@@ -266,19 +268,6 @@ final class DashAppearanceScreen extends Screen {
     private void drawColorCaption(GuiGraphics graphics, int x, String label, int color) {
         DashShape.frame(graphics, x, bodyY, x + 8, bodyY + 8, 2, BORDER, color);
         graphics.drawString(uiFont, DashHud.fit(uiFont, label, half - 12), x + 12, bodyY, TEXT, false);
-    }
-
-    private void drawPreview(GuiGraphics graphics) {
-        int y = bodyY + 3 * step;
-        int previewBottom = Math.min(bottom() - 39, y + 35);
-        if (previewBottom - y < 16) return;
-        DashAppearance.drawPanel(graphics, x(), y, x() + innerWidth(), previewBottom, CONTROL, true);
-        var pose = graphics.pose();
-        pose.pushMatrix();
-        pose.translate(x() + 10, y + 6);
-        pose.scale(DashAppearance.fontScale());
-        graphics.drawString(uiFont, text("Перегляд", "Предпросмотр", "Preview"), 0, 0, TEXT, false);
-        pose.popMatrix();
     }
 
     @Override public boolean isPauseScreen() { return false; }
@@ -303,6 +292,7 @@ final class DashAppearanceScreen extends Screen {
 
     private final class TileButton extends Button {
         private boolean selected;
+        private int swatchColor;
 
         TileButton(int x, int y, int width, int height, Component label, boolean selected, OnPress press) {
             super(x, y, width, height, label, press, DEFAULT_NARRATION);
@@ -311,15 +301,17 @@ final class DashAppearanceScreen extends Screen {
 
         @Override
         protected void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-            int accent = DashAppearance.accent();
+            int accent = DashAppearance.menuAccent();
             boolean hot = active && isHoveredOrFocused();
-            int edge = selected || hot ? accent : BORDER;
-            int fill = hot ? 0xFF323946 : selected ? 0xFF262D37 : CONTROL;
+            boolean chosen = swatchColor == 0 ? selected : swatchColor == DashAppearance.menuAccentTarget();
+            int edge = chosen || hot ? (swatchColor == 0 ? accent : swatchColor) : BORDER;
+            int fill = hot ? 0xFF2D263A : chosen ? 0xFF242033 : CONTROL;
+            int textColor = swatchColor == 0 ? TEXT : swatchColor;
             DashShape.frame(graphics, getX(), getY(), getX() + getWidth(), getY() + getHeight(),
                     Math.min(DashAppearance.cornerRadius(), 6), edge, fill);
             String shown = DashHud.fit(uiFont, getMessage().getString(), getWidth() - 6);
             graphics.drawString(uiFont, shown, getX() + (getWidth() - uiFont.width(shown)) / 2,
-                    getY() + (getHeight() - 8) / 2, active ? TEXT : MUTED, false);
+                    getY() + (getHeight() - 8) / 2, active ? textColor : MUTED, false);
         }
     }
 
@@ -345,7 +337,7 @@ final class DashAppearanceScreen extends Screen {
         @Override
         public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
             int x = getX(), y = getY(), right = x + getWidth(), bottom = y + getHeight();
-            int accent = DashAppearance.accent();
+            int accent = DashAppearance.menuAccent();
             DashShape.frame(graphics, x, y, right, bottom, Math.min(DashAppearance.cornerRadius(), 5),
                     isHoveredOrFocused() ? accent : BORDER, CONTROL);
             int rightLabel = right - 6 - uiFont.width(readout);
