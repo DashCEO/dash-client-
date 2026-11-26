@@ -31,13 +31,18 @@ public final class DashBindInput {
             while (binding.key().consumeClick()) {}
         }
         if (!client.isWindowActive()) {
-            claimedKeyboard.clear();
-            capturedKeyboard.clear();
-            claimedMouse.clear();
+            reset();
         }
     }
 
+    static void reset() {
+        claimedKeyboard.clear();
+        capturedKeyboard.clear();
+        claimedMouse.clear();
+    }
+
     public static boolean keyboard(Minecraft client, int action, KeyEvent event) {
+        if (SaveMode.isPaused()) return false;
         InputConstants.Key key = InputConstants.getKey(event);
         if (action == GLFW.GLFW_RELEASE) {
             capturedKeyboard.remove(key);
@@ -63,6 +68,7 @@ public final class DashBindInput {
     }
 
     public static boolean mouseState(Minecraft client, InputConstants.Key key, boolean down) {
+        if (SaveMode.isPaused()) return false;
         claimedMouse.remove(key);
         if (!down || !client.mouseHandler.isMouseGrabbed() || !dispatch(client, key)
                 || !hasVanillaAction(client.options, key)) return false;
@@ -72,7 +78,7 @@ public final class DashBindInput {
     }
 
     public static boolean mouseClickClaimed(InputConstants.Key key) {
-        return claimedMouse.contains(key);
+        return !SaveMode.isPaused() && claimedMouse.contains(key);
     }
 
     private static boolean dispatch(Minecraft client, InputConstants.Key key) {

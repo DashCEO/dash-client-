@@ -46,8 +46,13 @@ public final class Zoom {
         return true;
     }
 
+    static void reset() {
+        activePlayer = null;
+        magnification = START_MAGNIFICATION;
+    }
+
     private static boolean isActive(Minecraft client) {
-        if (key == null) return false;
+        if (key == null || SaveMode.isPaused()) return false;
 
         boolean pressed = key.consumeClick();
         while (key.consumeClick()) {

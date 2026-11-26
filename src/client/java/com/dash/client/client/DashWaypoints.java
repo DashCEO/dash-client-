@@ -243,22 +243,25 @@ public final class DashWaypoints {
     }
 
     private static void tick(Minecraft client) {
+        if (SaveMode.isPaused()) return;
         if (client.level == null || client.player == null) {
-            activeLevel = null;
-            activeFile = null;
-            activeProfile = null;
-        } else if (enabled && !SaveMode.isPaused()) {
+            clearTransient();
+        } else if (enabled) {
             loadActiveProfile(client);
         }
+    }
+
+    static void clearTransient() {
+        activeLevel = null;
+        activeFile = null;
+        activeProfile = null;
     }
 
     private static void loadActiveProfile(Minecraft client) {
         if (activeLevel == client.level) {
             return;
         }
-        activeLevel = null;
-        activeFile = null;
-        activeProfile = null;
+        clearTransient();
         String scope = worldScope(client);
         if (scope == null) {
             return;

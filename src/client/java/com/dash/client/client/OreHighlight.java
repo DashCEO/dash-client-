@@ -75,17 +75,18 @@ final class OreHighlight {
 
     static void toggle() {
         enabled = !enabled;
-        clear();
+        reset();
     }
 
     static void tick(Minecraft client) {
+        if (SaveMode.isPaused()) return;
         Camera camera = client.gameRenderer.getMainCamera();
         if (!canShow(client, camera)) {
-            clear();
+            reset();
             return;
         }
         if (scannedLevel != client.level) {
-            clear();
+            reset();
             scannedLevel = client.level;
         }
 
@@ -179,7 +180,7 @@ final class OreHighlight {
                 && camera.isInitialized() && camera.entity() == client.player;
     }
 
-    private static void clear() {
+    static void reset() {
         scannedLevel = null;
         nextRay = 0;
         scanTick = 0;

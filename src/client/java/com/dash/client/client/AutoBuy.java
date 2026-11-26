@@ -59,11 +59,12 @@ public final class AutoBuy {
     public static void toggle() { setEnabled(!enabled); }
 
     public static void setEnabled(boolean value) {
+        if (value && SaveMode.isPaused()) return;
         reset();
         enabled = value;
         status = value ? "Очікую аукціон /ah" : "Вимкнено";
         Minecraft client = Minecraft.getInstance();
-        if (value && !SaveMode.isPaused() && client.player != null && client.getConnection() != null
+        if (value && client.player != null && client.getConnection() != null
                 && !(client.screen instanceof AbstractContainerScreen<?> screen
                 && screen.getMenu() instanceof ChestMenu menu
                 && FunTimeAuction.isAuctionScreen(screen.getTitle().getString(), menu))) {
@@ -89,6 +90,10 @@ public final class AutoBuy {
     }
 
     public static void disconnect() {
+        pause();
+    }
+
+    static void pause() {
         setEnabled(false);
         observedMenu = null;
         rulesLevel = null;
@@ -96,6 +101,7 @@ public final class AutoBuy {
     }
 
     public static void onContainerUpdate(int containerId) {
+        if (SaveMode.isPaused()) return;
         var player = Minecraft.getInstance().player;
         if (player != null && player.containerMenu.containerId == containerId) {
             observedMenu = player.containerMenu;
@@ -105,7 +111,7 @@ public final class AutoBuy {
     }
 
     public static void onServerMessage(String message) {
-        if (!enabled) return;
+        if (!enabled || SaveMode.isPaused()) return;
         String text = FunTimeAuction.label(message)
                 .replaceFirst("^(?:\\s*\\[[^\\]]*]\\s*)+", "")
                 .replaceFirst("^[^\\p{L}]+", "")
@@ -163,7 +169,7 @@ public final class AutoBuy {
 
     public static void onInventoryClick(int containerId, int slot, int button, ClickType clickType) {
         Purchase purchase = pending;
-        if (!enabled || purchase == null || purchase.confirmed || button != 0
+        if (!enabled || SaveMode.isPaused() || purchase == null || purchase.confirmed || button != 0
                 || clickType != ClickType.PICKUP) return;
         Minecraft client = Minecraft.getInstance();
         if (!(client.screen instanceof AbstractContainerScreen<?> screen)
@@ -185,12 +191,7 @@ public final class AutoBuy {
     }
 
     public static void tick(Minecraft client) {
-        if (!enabled) return;
-        if (SaveMode.isPaused()) {
-            reset();
-            status = "Призупинено";
-            return;
-        }
+        if (!enabled || SaveMode.isPaused()) return;
         if (client.player == null || client.level == null || client.gameMode == null) {
             setEnabled(false);
             return;

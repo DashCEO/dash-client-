@@ -53,6 +53,10 @@ final class DashSparkParticle extends SingleQuadParticle {
 
     @Override
     public void tick() {
+        if (SaveMode.isPaused()) {
+            remove();
+            return;
+        }
         super.tick();
         oRoll = roll;
         roll += spin;

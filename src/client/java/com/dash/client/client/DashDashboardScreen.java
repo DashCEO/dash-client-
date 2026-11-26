@@ -623,7 +623,7 @@ public final class DashDashboardScreen extends Screen {
     private void activate(Hit hit, double x) {
         switch (hit.action) {
             case NAVIGATE -> navigate(NAV[hit.data]);
-            case PAUSE -> SaveMode.pause(minecraft);
+            case PAUSE -> PauseManager.pause(minecraft);
             case FAVORITES -> { favoritesOnly = !favoritesOnly; filter(); }
             case LANGUAGE -> {
                 HudSettings.setLanguage(LANGUAGES[(HudSettings.language().ordinal() + 1) % LANGUAGES.length]);
@@ -779,7 +779,13 @@ public final class DashDashboardScreen extends Screen {
 
     @Override public boolean isPauseScreen() { return false; }
     @Override public void onClose() { if (closeAt == 0) closeAt = System.nanoTime(); }
-    @Override public void removed() { HudSettings.save(); TriggerBot.saveSettings(); }
+    @Override
+    public void removed() {
+        if (!SaveMode.isPaused()) {
+            HudSettings.save();
+            TriggerBot.saveSettings();
+        }
+    }
 
     boolean compactLayout() { return true; }
     int visibleModules() { return results.size(); }

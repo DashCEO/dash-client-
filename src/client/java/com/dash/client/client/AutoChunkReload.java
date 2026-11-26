@@ -40,15 +40,23 @@ public final class AutoChunkReload {
 
     private AutoChunkReload() {}
 
+    static void reset() {
+        level = null;
+        lastGrid = null;
+        lastCenter = null;
+        retryAfter.clear();
+        settledSince = 0;
+        nextCheck = 0;
+        loadingSince = 0;
+        loggedLoadingDelay = false;
+    }
+
     static void tick(Minecraft client) {
+        if (SaveMode.isPaused()) return;
         boolean loading = client.screen instanceof LevelLoadingScreen;
         if (level != client.level) {
+            reset();
             level = client.level;
-            lastGrid = null;
-            retryAfter.clear();
-            settledSince = 0;
-            loadingSince = 0;
-            loggedLoadingDelay = false;
         }
         if (!loading) {
             loadingSince = 0;

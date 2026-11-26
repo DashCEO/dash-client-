@@ -27,13 +27,14 @@ public final class AttackSpeedCheck {
         ClientTickEvents.END_CLIENT_TICK.register(client -> sample(client, false));
         ClientSendMessageEvents.ALLOW_COMMAND.register(command -> {
             if (!command.strip().equalsIgnoreCase("dashspeed")) return true;
-            show(Minecraft.getInstance());
+            if (!SaveMode.isPaused()) show(Minecraft.getInstance());
             return false;
         });
     }
 
     public static void onServerAttributes(Minecraft client, ClientboundUpdateAttributesPacket packet, boolean applied) {
-        if (!client.isSameThread() || client.player == null || packet.getEntityId() != client.player.getId()) return;
+        if (SaveMode.isPaused() || !client.isSameThread() || client.player == null
+                || packet.getEntityId() != client.player.getId()) return;
         for (var snapshot : packet.getValues()) {
             if (snapshot.attribute().equals(Attributes.ATTACK_SPEED)) {
                 sample(client, applied);
@@ -43,12 +44,11 @@ public final class AttackSpeedCheck {
     }
 
     private static void sample(Minecraft client, boolean serverUpdate) {
+        if (SaveMode.isPaused()) return;
         var player = client.player;
         var attribute = player == null ? null : player.getAttribute(Attributes.ATTACK_SPEED);
         if (attribute == null) {
-            sampledPlayer = null;
-            previousMainHand = ItemStack.EMPTY;
-            previousOffHand = ItemStack.EMPTY;
+            reset();
             return;
         }
         double speed = attribute.getValue();
@@ -69,6 +69,14 @@ public final class AttackSpeedCheck {
         previousBase = base;
         previousMainHand = mainHand;
         previousOffHand = offHand;
+    }
+
+    static void reset() {
+        sampledPlayer = null;
+        previousSpeed = 0;
+        previousBase = 0;
+        previousMainHand = ItemStack.EMPTY;
+        previousOffHand = ItemStack.EMPTY;
     }
 
     private static String itemId(ItemStack stack) {

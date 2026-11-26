@@ -28,17 +28,18 @@ final class StaffList {
 
     static void toggle() {
         enabled = !enabled;
-        clear();
+        reset();
     }
 
     static void tick(Minecraft client) {
+        if (SaveMode.isPaused()) return;
         var connection = client.getConnection();
-        if (!enabled || SaveMode.isPaused() || connection == null || client.level == null) {
-            clear();
+        if (!enabled || connection == null || client.level == null) {
+            reset();
             return;
         }
         if (lastConnection != connection) {
-            clear();
+            reset();
             lastConnection = connection;
         }
         if (ticksUntilScan-- > 0) return;
@@ -85,7 +86,7 @@ final class StaffList {
         return y + 15 + 10 * rows;
     }
 
-    private static void clear() {
+    static void reset() {
         visibleNames = List.of();
         lastConnection = null;
         ticksUntilScan = 0;

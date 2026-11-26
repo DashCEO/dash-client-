@@ -135,6 +135,7 @@ public final class SwapBind {
     }
 
     public static void onInventoryMenuSync(Minecraft client, int containerId, int menuSlot) {
+        if (SaveMode.isPaused()) return;
         if (player == null || player != client.player || player.inventoryMenu.containerId != containerId) return;
         for (int i = 0; i < held.length; i++) {
             HandOwnership ownership = held[i];
@@ -145,6 +146,7 @@ public final class SwapBind {
     }
 
     public static void onPlayerInventorySync(Minecraft client, int slot) {
+        if (SaveMode.isPaused()) return;
         if (player == null || player != client.player || !(Inventory.isHotbarSlot(slot) || slot == Inventory.SLOT_OFFHAND)) {
             return;
         }

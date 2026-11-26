@@ -245,15 +245,19 @@ public final class DashIntroVideo {
 
     public static void finish(Minecraft client) {
         finished = true;
-        if (playback != null) {
-            playback.stop();
-            if (playback.texture != null) {
-                client.getTextureManager().release(TEXTURE);
-            }
-            playback = null;
-        }
+        Playback previous = playback;
+        playback = null;
         guideStarted = false;
         holdStart = Long.MIN_VALUE;
+        if (previous == null) return;
+        try {
+            previous.stop();
+        } finally {
+            if (previous.texture != null) {
+                previous.texture = null;
+                client.getTextureManager().release(TEXTURE);
+            }
+        }
     }
 
     private record Frame(long timestamp, BufferedImage image) {
@@ -274,7 +278,7 @@ public final class DashIntroVideo {
         private int height;
         private int displayedFrames;
         private Clip audio;
-        private boolean stopped;
+        private volatile boolean stopped;
 
         private Playback(String resource, float volume) {
             this.resource = resource;
@@ -320,6 +324,8 @@ public final class DashIntroVideo {
                 Thread.currentThread().interrupt();
             } catch (Exception | LinkageError exception) {
                 failure = exception;
+            } finally {
+                if (stopped) frames.clear();
             }
         }
 
@@ -382,13 +388,21 @@ public final class DashIntroVideo {
         }
 
         private synchronized void stop() {
+            if (stopped) return;
             stopped = true;
             worker.interrupt();
+            frames.clear();
             if (audio != null) {
                 Clip clip = audio;
                 audio = null;
                 // An audio driver can block while closing its line.
-                Thread.ofVirtual().start(clip::close);
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        clip.close();
+                    } catch (RuntimeException | LinkageError failure) {
+                        LOGGER.warn("Could not close Dash startup audio", failure);
+                    }
+                });
             }
         }
 

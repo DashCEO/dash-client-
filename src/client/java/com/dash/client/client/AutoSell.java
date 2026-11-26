@@ -64,6 +64,7 @@ public final class AutoSell {
     static String searchInput() { return searchInput; }
 
     static void toggle() {
+        if (SaveMode.isPaused()) return;
         if (isEnabled()) {
             stop("Зупинено");
         } else {
@@ -73,6 +74,7 @@ public final class AutoSell {
     }
 
     static boolean start(Minecraft client, String itemText, String searchText) {
+        if (SaveMode.isPaused()) return false;
         itemInput = itemText.strip();
         searchInput = searchText.strip();
         if (AutoBuy.isEnabled()) return invalid("Спочатку вимкни AutoBuy");
@@ -108,6 +110,7 @@ public final class AutoSell {
     }
 
     public static void onAuctionContents(int containerId) {
+        if (SaveMode.isPaused()) return;
         Session run = session;
         if (run == null || run.phase != Phase.SEARCHING) return;
         Minecraft client = Minecraft.getInstance();
@@ -123,6 +126,7 @@ public final class AutoSell {
     }
 
     static void onServerMessage(String message) {
+        if (SaveMode.isPaused()) return;
         Session run = session;
         if (run == null || (run.phase != Phase.SEARCHING && run.phase != Phase.WAITING_FOR_SEARCH
                 && run.phase != Phase.WAITING_FOR_LISTING)) return;
@@ -157,10 +161,11 @@ public final class AutoSell {
     }
 
     static void tick(Minecraft client) {
+        if (SaveMode.isPaused()) return;
         Session run = session;
         if (run == null) return;
         var player = client.player;
-        if (SaveMode.isPaused() || AutoBuy.isEnabled() || player == null || !player.isAlive() || player.isSpectator()
+        if (AutoBuy.isEnabled() || player == null || !player.isAlive() || player.isSpectator()
                 || client.level != run.level || client.getConnection() != run.connection || client.gameMode == null) {
             stop("Зупинено");
             return;

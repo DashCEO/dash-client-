@@ -58,6 +58,7 @@ public final class DashTelemetry {
     }
 
     static void tick(Minecraft client, boolean radarEnabled, boolean cooldownsEnabled) {
+        if (SaveMode.isPaused()) return;
         updateLevel(client.level);
         if (client.isPaused() && timeSamples != 0) {
             resetTimeSamples();
@@ -92,6 +93,7 @@ public final class DashTelemetry {
     }
 
     public static void onServerTime(Minecraft client, long gameTime) {
+        if (SaveMode.isPaused()) return;
         updateLevel(client.level);
         if (level == null || client.isPaused() || level.tickRateManager().isFrozen()) {
             resetTimeSamples();
@@ -129,18 +131,26 @@ public final class DashTelemetry {
 
     private static void updateLevel(ClientLevel currentLevel) {
         if (level != currentLevel) {
+            reset();
             level = currentLevel;
-            resetTimeSamples();
-            clearRadar();
-            cooldownRefresh = 0;
-            COOLDOWNS.clear();
         }
+    }
+
+    static void reset() {
+        level = null;
+        resetTimeSamples();
+        clearRadar();
+        cooldownRefresh = 0;
+        COOLDOWNS.clear();
+        COOLDOWN_GROUPS.clear();
     }
 
     private static void resetTimeSamples() {
         timeSamples = 0;
         nextTimeSample = 0;
+        lastTimePacket = 0;
         tpsText = null;
+        healthyTps = false;
     }
 
     static int drawPing(GuiGraphics graphics, Minecraft client, int x, int y) {

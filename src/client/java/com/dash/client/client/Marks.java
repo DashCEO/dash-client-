@@ -135,7 +135,8 @@ final class Marks {
     }
 
     private static void tick(Minecraft client) {
-        if (client.level == null || enabled && !SaveMode.isPaused()) ensureWorld(client);
+        if (SaveMode.isPaused()) return;
+        if (client.level == null || enabled) ensureWorld(client);
     }
 
     private static boolean place(Minecraft client) {
@@ -198,11 +199,15 @@ final class Marks {
         return aimed >= 0 ? aimed : atFeet;
     }
 
-    private static void ensureWorld(Minecraft client) {
-        if (activeLevel == client.level) return;
+    static void clearTransient() {
         activeLevel = null;
         activeFile = null;
         activeMarks = null;
+    }
+
+    private static void ensureWorld(Minecraft client) {
+        if (activeLevel == client.level) return;
+        clearTransient();
         if (client.level == null) return;
         String scope = DashWaypoints.worldScope(client);
         if (scope == null) return;

@@ -44,18 +44,19 @@ public final class BaseFinder {
     public static void setEnabled(boolean value) {
         enabled = value;
         if (!value) {
-            clearScan();
+            reset();
         }
     }
 
     public static void tick(Minecraft client) {
-        if (SaveMode.isPaused() || !enabled || client.level == null || client.player == null || client.options.hideGui) {
-            clearScan();
+        if (SaveMode.isPaused()) return;
+        if (!enabled || client.level == null || client.player == null || client.options.hideGui) {
+            reset();
             return;
         }
 
         if (scannedLevel != client.level) {
-            clearScan();
+            reset();
             scannedLevel = client.level;
         }
         if (ticksUntilScan > 0 && --ticksUntilScan > 0) {
@@ -172,7 +173,7 @@ public final class BaseFinder {
         return type == BlockEntityType.CHEST || type == BlockEntityType.TRAPPED_CHEST || type == BlockEntityType.SHULKER_BOX;
     }
 
-    private static void clearScan() {
+    static void reset() {
         scannedLevel = null;
         ticksUntilScan = 0;
         markers = List.of();

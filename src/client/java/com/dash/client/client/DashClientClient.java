@@ -82,6 +82,7 @@ public class DashClientClient implements ClientModInitializer {
     private static boolean fpsEnabled = true;
     private static boolean keysEnabled = true;
     private static boolean sprintEnabled = false;
+    private static LocalPlayer dashSprintOwner;
 
     private static boolean targetHudEnabled = true;
     private static boolean hitParticlesEnabled = true;
@@ -201,22 +202,69 @@ public class DashClientClient implements ClientModInitializer {
     }
 
     static void onPause(Minecraft client) {
-        AutoBuy.reset();
-        AutoSell.stop("Зупинено");
-        AutoSwap.reset();
-        SwapBind.reset();
-        ConsumableBind.abort(client);
+        PauseManager.step("AutoBuy", AutoBuy::pause);
+        PauseManager.step("AutoSell", () -> AutoSell.stop(text("Зупинено", "Остановлено", "Stopped")));
+        PauseManager.step("AutoSwap", AutoSwap::disable);
+        PauseManager.step("Swap Bind", SwapBind::reset);
+        PauseManager.step("Consumable Bind", () -> ConsumableBind.abort(client));
         InventoryBindSupport.clearReservation();
-        AIM_ASSIST.reset();
-        Freelook.reset();
-        TargetActivity.reset();
-        Velocity.reset();
+        PauseManager.step("Aim Assist", () -> {
+            AIM_ASSIST.reset();
+            AimCritTiming.markTick(null);
+        });
+        aimOwnsAttacksThisTick = false;
+        assistedAttackSource = null;
+        assistedAttackDispatched = false;
+        killAuraEnabled = false;
+        pvp18Enabled = false;
+        autoTotemEnabled = false;
+        autoFarmEnabled = false;
+        packetFlyEnabled = false;
+        autoFarmCooldown = boneMealAppliedCount = packetFlyCounter = dashTickCounter = 0;
+        PauseManager.step("Trigger Bot", TriggerBot::disable);
+        PauseManager.step("Freelook", Freelook::reset);
+        PauseManager.step("Zoom", Zoom::reset);
+        PauseManager.step("Target HUD", TargetActivity::reset);
+        PauseManager.step("Velocity", Velocity::disable);
         pendingHits.clear();
-        ManualHitFeedback.clear();
-        tickNightVision(client);
-        if (sprintEnabled && client.player != null) {
-            client.player.setSprinting(false);
+        PauseManager.step("Hit Feedback", ManualHitFeedback::clear);
+        PauseManager.step("Night Vision", () -> tickNightVision(client));
+        PauseManager.step("Sprint", () -> releaseDashSprint(client));
+        sprintEnabled = false;
+        PauseManager.step("Auto Chunk Reload", AutoChunkReload::reset);
+        PauseManager.step("Ore Highlight", OreHighlight::reset);
+        PauseManager.step("Base Finder", BaseFinder::reset);
+        PauseManager.step("Staff List", StaffList::reset);
+        PauseManager.step("HUD telemetry", DashTelemetry::reset);
+        PauseManager.step("Attack Speed diagnostics", AttackSpeedCheck::reset);
+        PauseManager.step("HUD session", DashHudLayout::clearTransient);
+        PauseManager.step("marks session", Marks::clearTransient);
+        PauseManager.step("waypoints session", DashWaypoints::clearTransient);
+        PauseManager.step("intro playback", () -> DashIntroVideo.finish(client));
+    }
+
+    private static void tickSprint(Minecraft client) {
+        LocalPlayer player = client.player;
+        if (client.options.keySprint.isDown()) {
+            dashSprintOwner = null;
+        } else if (!player.isSprinting()) {
+            player.setSprinting(true);
+            dashSprintOwner = player;
         }
+    }
+
+    private static void releaseDashSprint(Minecraft client) {
+        LocalPlayer player = dashSprintOwner;
+        dashSprintOwner = null;
+        if (player != null && player == client.player && !client.options.keySprint.isDown()) {
+            player.setSprinting(false);
+        }
+    }
+
+    private static void registerModuleTick(ClientTickEvents.EndTick callback) {
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (!SaveMode.isPaused()) callback.onEndTick(client);
+        });
     }
 
     static Map<String, Boolean> profileModules() {
@@ -316,7 +364,8 @@ public class DashClientClient implements ClientModInitializer {
     }
 
     static boolean hasUntrackedAttacks() {
-        return !aimOwnsAttacksThisTick && !TriggerBot.isEnabled() && (killAuraEnabled || pvp18Enabled);
+        return !SaveMode.isPaused() && !aimOwnsAttacksThisTick && !TriggerBot.isEnabled()
+                && (killAuraEnabled || pvp18Enabled);
     }
 
     static void applyProfileModules(Map<String, Boolean> states) {
@@ -355,7 +404,6 @@ public class DashClientClient implements ClientModInitializer {
         DashNicknameSetupScreen.register();
         DashHudLayout.load();
         AutoBuySettings.load();
-        SaveMode.register();
         Freelook.register();
         Zoom.register();
         TriggerBot.register();
@@ -363,6 +411,7 @@ public class DashClientClient implements ClientModInitializer {
         ConsumableBind.register();
         AIM_ASSIST.register();
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            dashSprintOwner = null;
             AIM_ASSIST.reset();
             AimCritTiming.markTick(null);
             SwapBind.reset();
@@ -378,6 +427,7 @@ public class DashClientClient implements ClientModInitializer {
             AutoSwap.disable();
         });
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            if (SaveMode.isPaused()) return;
             String text = message.getString();
             AutoBuy.onServerMessage(text);
             AutoSell.onServerMessage(text);
@@ -419,32 +469,33 @@ public class DashClientClient implements ClientModInitializer {
                 )
         );
 
-        ClientTickEvents.END_CLIENT_TICK.register(TriggerBot::handleInput);
-        ClientTickEvents.END_CLIENT_TICK.register(DashBindInput::tick);
-        ClientTickEvents.END_CLIENT_TICK.register(SwapBind::tick);
-        ClientTickEvents.END_CLIENT_TICK.register(ConsumableBind::tick);
-        ClientTickEvents.END_CLIENT_TICK.register(DashClientClient::tickAim);
-        ClientTickEvents.END_CLIENT_TICK.register(DashHudLayout::tick);
+        registerModuleTick(TriggerBot::handleInput);
+        registerModuleTick(DashBindInput::tick);
+        registerModuleTick(SwapBind::tick);
+        registerModuleTick(ConsumableBind::tick);
+        registerModuleTick(DashClientClient::tickAim);
+        registerModuleTick(DashHudLayout::tick);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            if (SaveMode.isPaused()) {
+                PauseManager.discardBindingInput();
+                if (ConsumableBind.busy(client)) {
+                    PauseManager.step("inventory recovery", () -> ConsumableBind.finishPause(client));
+                }
+                return;
+            }
             ManualHitFeedback.tick(client);
-            boolean active = !SaveMode.isPaused();
-            if (!active || !hitParticlesEnabled || client.player == null || client.level == null) {
+            if (!hitParticlesEnabled || client.player == null || client.level == null) {
                 pendingHits.clear();
             } else if (!pendingHits.isEmpty()) {
                 expirePendingHits(System.nanoTime());
             }
-            DashTelemetry.tick(client, active && radarHudEnabled, active && cooldownHudEnabled);
+            DashTelemetry.tick(client, radarHudEnabled, cooldownHudEnabled);
             StaffList.tick(client);
-            if (active && targetHudEnabled) {
+            if (targetHudEnabled) {
                 TargetActivity.tick(client, getAimedTarget(client));
             } else {
                 TargetActivity.reset();
             }
-            if (SaveMode.isPaused()) {
-                SaveMode.discardBindingInput();
-                return;
-            }
-
             while (openMenuKey.consumeClick()) {
                 if (client.screen instanceof DashDashboardScreen dashboard) {
                     dashboard.onClose();
@@ -462,7 +513,7 @@ public class DashClientClient implements ClientModInitializer {
             tickNightVision(client);
 
             if (sprintEnabled) {
-                client.player.setSprinting(true);
+                tickSprint(client);
             }
             if (autoTotemEnabled) {
                 tickAutoTotem(client);
@@ -483,21 +534,20 @@ public class DashClientClient implements ClientModInitializer {
             }
         });
 
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+        registerModuleTick(client -> {
             if (!aimOwnsAttacksThisTick) TriggerBot.tick(client);
         });
-        ClientTickEvents.END_CLIENT_TICK.register(AutoSwap::tick);
-        ClientTickEvents.END_CLIENT_TICK.register(AutoBuy::tick);
-        ClientTickEvents.END_CLIENT_TICK.register(AutoSell::tick);
-        ClientTickEvents.END_CLIENT_TICK.register(CosmicSky::tick);
+        registerModuleTick(AutoSwap::tick);
+        registerModuleTick(AutoBuy::tick);
+        registerModuleTick(AutoSell::tick);
+        registerModuleTick(TerrainVisuals::refresh);
         WorldRenderEvents.AFTER_ENTITIES.register(DashClientClient::renderTargetEsp);
         WorldRenderEvents.AFTER_ENTITIES.register(ChinaHat::render);
-        ClientTickEvents.END_CLIENT_TICK.register(XRay::tick);
-        ClientTickEvents.END_CLIENT_TICK.register(AutoChunkReload::tick);
+        registerModuleTick(AutoChunkReload::tick);
         WorldRenderEvents.BEFORE_BLOCK_OUTLINE.register((context, outline) -> !XRay.isRendering());
-        ClientTickEvents.END_CLIENT_TICK.register(OreHighlight::tick);
+        registerModuleTick(OreHighlight::tick);
         WorldRenderEvents.AFTER_ENTITIES.register(OreHighlight::render);
-        ClientTickEvents.END_CLIENT_TICK.register(BaseFinder::tick);
+        registerModuleTick(BaseFinder::tick);
         WorldRenderEvents.AFTER_ENTITIES.register(BaseFinder::render);
 
         HudElementRegistry.addLast(
@@ -1614,7 +1664,7 @@ public class DashClientClient implements ClientModInitializer {
                     HudSettings.shade(.035F));
             DashShape.fill(graphics, CONTENT_LEFT, 61, CONTENT_LEFT + 20, 63, 1, accent);
             DashShape.frame(graphics, 10, CONTENT_BOTTOM + 4, 101, PANEL_HEIGHT - 4, 6, 0xFF5D343A, 0xFF2A1B1E);
-            String pauseAction = text("ПАНІКА", "ПАНИКА", "PANIC");
+            String pauseAction = text("ПАУЗА", "ПАУЗА", "PAUSE");
             drawCenteredLabel(graphics, pauseAction, 55, CONTENT_BOTTOM + 8, 0xFFFFB7BF);
             graphics.drawString(uiFont, "RSHIFT / ESC", contentRight() - uiFont.width("RSHIFT / ESC"),
                     CONTENT_BOTTOM + 8, MUTED, false);
@@ -1981,7 +2031,7 @@ public class DashClientClient implements ClientModInitializer {
             draggingTriggerRange = false;
 
             if (inside(x, y, 10, CONTENT_BOTTOM + 4, 101, PANEL_HEIGHT - 4)) {
-                SaveMode.pause(minecraft);
+                PauseManager.pause(minecraft);
                 return true;
             }
 
@@ -2090,8 +2140,10 @@ public class DashClientClient implements ClientModInitializer {
 
         @Override
         public void removed() {
-            HudSettings.save();
-            TriggerBot.saveSettings();
+            if (!SaveMode.isPaused()) {
+                HudSettings.save();
+                TriggerBot.saveSettings();
+            }
             super.removed();
         }
 

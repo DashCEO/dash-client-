@@ -1,6 +1,5 @@
 package com.dash.client.client;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.state.SkyRenderState;
 import net.minecraft.util.ARGB;
@@ -11,7 +10,6 @@ public final class CosmicSky {
     private static final int HORIZON_COLOR = 0xFF7938AA;
     private static final int GLOW_COLOR = 0x00EF83FF;
     private static final int GRASS_SHADE = 0xFF26243D;
-    private static volatile boolean terrainTintActive;
 
     private CosmicSky() {}
 
@@ -45,20 +43,10 @@ public final class CosmicSky {
     }
 
     public static int grassColor(int original) {
-        if (!terrainTintActive) {
+        if (!TerrainVisuals.isGrassTintActive()) {
             return original;
         }
         return ARGB.srgbLerp(0.55F, original | 0xFF000000, GRASS_SHADE) & 0xFFFFFF;
     }
 
-    public static void tick(Minecraft client) {
-        boolean active = isActive(client.level);
-        if (terrainTintActive != active) {
-            terrainTintActive = active;
-            if (client.level != null) {
-                // Grass colors live in chunk meshes, so update them only when the effect changes.
-                client.levelRenderer.allChanged();
-            }
-        }
-    }
 }

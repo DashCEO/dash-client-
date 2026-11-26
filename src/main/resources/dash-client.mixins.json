@@ -37,18 +37,12 @@
     "XRayVulkanRegionMixin",
     "VulkanTerrainRecoveryMixin",
     "TelemetryTimeMixin",
-    "KeyBindsListMixin",
-    "KeyBindsScreenMixin",
-    "KeyBindEntryMixin",
     "LoadingOverlayMixin",
     "NameProtectChatMixin",
     "NameProtectTabMixin",
     "NameProtectSidebarMixin",
     "NameProtectNametagMixin",
     "NameProtectTooltipMixin",
-    "StandaloneBaseFinderMixin",
-    "StandaloneFreecamMixin",
-    "StandaloneNightVisionMixin",
     "PlayerEspMixin"
   ],
   "injectors": {

@@ -94,6 +94,21 @@ public final class ConsumableBind {
         beginRestore(client, use, now);
     }
 
+    static void finishPause(Minecraft client) {
+        try {
+            if (pending != null && pending.restoring) {
+                advance(client, pending);
+            } else {
+                reset();
+            }
+        } catch (RuntimeException exception) {
+            reset();
+            throw exception;
+        } finally {
+            if (pending == null) InventoryBindSupport.clearReservation();
+        }
+    }
+
     public static boolean holdsUse(Minecraft client, Player player) {
         Use use = pending;
         return use != null && use.owner == player && !use.restoring && enabled && isCurrentPlayer(client, use)

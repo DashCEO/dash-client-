@@ -386,13 +386,9 @@ public final class DashHudLayout {
     }
 
     static void tick(Minecraft client) {
-        if (SaveMode.isPaused() || client.level == null || client.player == null) {
-            if (worldReady) {
-                clickCount = 0;
-                clearNotices();
-                worldReady = false;
-            }
-            world = null;
+        if (SaveMode.isPaused()) return;
+        if (client.level == null || client.player == null) {
+            if (worldReady) clearTransient();
             return;
         }
         boolean changedWorld = world != client.level;
@@ -427,6 +423,22 @@ public final class DashHudLayout {
         }
         updateModuleStates(changedWorld || !worldReady);
         worldReady = true;
+    }
+
+    static void clearTransient() {
+        clickHead = 0;
+        clickCount = 0;
+        sampledClicks = -1;
+        rate = "0";
+        Arrays.fill(ACTIVE_NAMES, null);
+        activeCount = 0;
+        visibleActiveCount = 0;
+        activeOverflow = "";
+        clearNotices();
+        coordinates = "";
+        waypoint = null;
+        world = null;
+        worldReady = false;
     }
 
     private static void clearNotices() {
