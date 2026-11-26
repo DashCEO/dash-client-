@@ -78,6 +78,19 @@ tasks.withType(JavaCompile).configureEach {
     it.options.release = 21
 }
 
+def nicknameSetupFile = providers.environmentVariable('DASH_NICKNAME_SETUP_FILE')
+def skipStartupIntro = providers.environmentVariable('DASH_SKIP_STARTUP')
+tasks.withType(JavaExec).configureEach {
+    if (name in ['runClient', 'runRtxClient', 'runRtxSafeClient']) {
+        if (nicknameSetupFile.isPresent()) {
+            systemProperty 'dash.launcherNicknameFile', nicknameSetupFile.get()
+        }
+        if (skipStartupIntro.getOrElse('0') == '1') {
+            systemProperty 'dash.skipStartupIntro', 'true'
+        }
+    }
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)

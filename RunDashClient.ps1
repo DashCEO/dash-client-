@@ -88,6 +88,12 @@ function Test-DashNvidiaOpenGlFailure([string]$gameDir, [datetime]$sinceUtc) {
     return $false
 }
 
+function Read-DashNickname([string]$path) {
+    if (!(Test-Path -LiteralPath $path -PathType Leaf)) { return }
+    $nickname = [IO.File]::ReadAllText($path).Trim()
+    if ($nickname -cmatch '^[A-Za-z0-9_]{3,16}$') { return $nickname }
+}
+
 $gradleDir = Join-Path $PSScriptRoot '.gradle'
 [void][IO.Directory]::CreateDirectory($gradleDir)
 $lockPath = Join-Path $gradleDir 'dash-client-launch.lock'
@@ -118,7 +124,11 @@ try {
         }
     }
 
-    $userArgument = "--args=--username $env:DASH_USERNAME"
+    $nicknamePath = Join-Path $PSScriptRoot 'run/dash-nickname.txt'
+    $nickname = Read-DashNickname $nicknamePath
+    $needsNickname = [string]::IsNullOrEmpty($nickname)
+    $env:DASH_NICKNAME_SETUP_FILE = if ($needsNickname) { $nicknamePath } else { $null }
+    $env:DASH_SKIP_STARTUP = $null
     $runtimeArgs = @()
     $jdkRoot = Join-Path $env:ProgramFiles 'Eclipse Adoptium'
     $jdk21 = Get-ChildItem -LiteralPath $jdkRoot -Filter 'jdk-21.*' -Directory -ErrorAction SilentlyContinue |
@@ -127,7 +137,7 @@ try {
     if ($jdk21) {
         $runtimeArgs += '-PdashGameJava21'
     }
-    $gradleArgs = @('runClient', $userArgument)
+    $gradleArgs = @('runClient')
     $rtxDir = Join-Path $PSScriptRoot 'run/rtx-profile'
     $launchVulkan = $false
     $launchOpenGl = $false
@@ -142,36 +152,51 @@ try {
         $env:VK_LOADER_DRIVERS_SELECT = 'nv-vk64.json'
         $env:VK_LOADER_VENDOR_ID_FILTER = '0x10de'
         $env:VK_LOADER_DEVICE_ID_FILTER = '0x2f04'
-        $gradleArgs = @('--no-daemon', 'runRtxClient', $userArgument)
+        $gradleArgs = @('--no-daemon', 'runRtxClient')
         Write-Host 'Starting Dash Client RTX (Vulkan)...'
     } elseif ($env:DASH_RTX_PROFILE -eq '1') {
         $launchOpenGl = $true
         Clear-DashVulkanSelection
         Set-DashOpenGlWindowed $rtxDir
-        $gradleArgs = @('--no-daemon', 'runRtxSafeClient', $userArgument)
+        $gradleArgs = @('--no-daemon', 'runRtxSafeClient')
         Write-Host 'Starting the Dash RTX profile with borderless OpenGL (840 FPS cap)...'
     } else {
         Write-Host 'Starting Dash Client...'
     }
     Push-Location -LiteralPath $PSScriptRoot
     try {
-        $launchTimeUtc = [datetime]::UtcNow
-        & (Join-Path $PSScriptRoot 'gradlew.bat') @runtimeArgs @gradleArgs
-        $exitCode = $LASTEXITCODE
-        if ($launchVulkan -and $exitCode -ne 0) {
-            $rendererFailure = Get-DashRendererFailure $rtxDir $launchTimeUtc
-            if ($rendererFailure -eq 'Vulkan renderer shutdown') {
-                Write-Host 'Vulkan failed during shutdown. DashClient-Stable.bat starts the same profile with OpenGL.'
-            } elseif ($rendererFailure) {
-                Write-Host "$rendererFailure. Restarting once with OpenGL in the same game profile."
-                Clear-DashVulkanSelection
-                Set-DashOpenGlWindowed $rtxDir
-                & (Join-Path $PSScriptRoot 'gradlew.bat') @runtimeArgs --no-daemon runRtxSafeClient $userArgument
-                $exitCode = $LASTEXITCODE
+        $gradleWrapper = Join-Path $PSScriptRoot 'gradlew.bat'
+        for ($attempt = 0; $attempt -lt 2; $attempt++) {
+            $userArgument = if ($needsNickname) { '--args=--disableMultiplayer' } else { "--args=--username $nickname" }
+            $launchTimeUtc = [datetime]::UtcNow
+            & $gradleWrapper @runtimeArgs @gradleArgs $userArgument
+            $exitCode = $LASTEXITCODE
+            if ($launchVulkan -and $exitCode -ne 0) {
+                $rendererFailure = Get-DashRendererFailure $rtxDir $launchTimeUtc
+                if ($rendererFailure -eq 'Vulkan renderer shutdown') {
+                    Write-Host 'Vulkan failed during shutdown. DashClient-Stable.bat starts the same profile with OpenGL.'
+                } elseif ($rendererFailure) {
+                    Write-Host "$rendererFailure. Restarting once with OpenGL in the same game profile."
+                    Clear-DashVulkanSelection
+                    Set-DashOpenGlWindowed $rtxDir
+                    $launchVulkan = $false
+                    $launchOpenGl = $true
+                    $gradleArgs = @('--no-daemon', 'runRtxSafeClient')
+                    & $gradleWrapper @runtimeArgs @gradleArgs $userArgument
+                    $exitCode = $LASTEXITCODE
+                }
+            } elseif ($launchOpenGl -and $exitCode -ne 0 -and
+                    (Test-DashNvidiaOpenGlFailure $rtxDir $launchTimeUtc)) {
+                Write-Host 'The NVIDIA OpenGL driver failed while presenting a frame. See the latest hs_err_pid log in run/rtx-profile.'
             }
-        } elseif ($launchOpenGl -and $exitCode -ne 0 -and
-                (Test-DashNvidiaOpenGlFailure $rtxDir $launchTimeUtc)) {
-            Write-Host 'The NVIDIA OpenGL driver failed while presenting a frame. See the latest hs_err_pid log in run/rtx-profile.'
+
+            if (!$needsNickname -or $exitCode -ne 0) { break }
+            $nickname = Read-DashNickname $nicknamePath
+            if ([string]::IsNullOrEmpty($nickname)) { break }
+            Write-Host 'Nickname saved. Restarting Dash Client with the selected profile.'
+            $needsNickname = $false
+            $env:DASH_NICKNAME_SETUP_FILE = $null
+            $env:DASH_SKIP_STARTUP = '1'
         }
     } finally {
         Pop-Location

@@ -352,6 +352,7 @@ public class DashClientClient implements ClientModInitializer {
     public void onInitializeClient() {
         HudSettings.load();
         DashAppearance.load();
+        DashNicknameSetupScreen.register();
         DashHudLayout.load();
         AutoBuySettings.load();
         SaveMode.register();

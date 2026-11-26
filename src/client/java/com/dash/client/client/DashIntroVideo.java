@@ -48,7 +48,7 @@ public final class DashIntroVideo {
     private static Playback playback;
     private static boolean guideStarted;
     private static long holdStart = Long.MIN_VALUE;
-    private static boolean finished;
+    private static boolean finished = Boolean.getBoolean("dash.skipStartupIntro");
 
     private DashIntroVideo() {
     }
