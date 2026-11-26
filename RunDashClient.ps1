@@ -1,5 +1,40 @@
 $ErrorActionPreference = 'Stop'
 
+function Find-DashJdk25 {
+    $candidates = @(
+        $env:JAVA_HOME
+        Get-Command java.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object {
+            Split-Path -Parent (Split-Path -Parent $_.Source)
+        }
+        $roots = @($env:ProgramFiles)
+        if ($env:LOCALAPPDATA) { $roots += Join-Path $env:LOCALAPPDATA 'Programs' }
+        foreach ($root in $roots) {
+            if (!$root) { continue }
+            Get-ChildItem -LiteralPath $root -Directory -Filter '*25*' -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName
+            foreach ($vendor in @('Eclipse Adoptium', 'Java', 'Microsoft', 'Amazon Corretto', 'BellSoft', 'Zulu', 'Azul Systems', 'Semeru', 'SapMachine')) {
+                Get-ChildItem -LiteralPath (Join-Path $root $vendor) -Directory -Filter '*25*' -ErrorAction SilentlyContinue |
+                    Select-Object -ExpandProperty FullName
+            }
+        }
+        if ($env:USERPROFILE) {
+            Get-ChildItem -LiteralPath (Join-Path $env:USERPROFILE '.jdks') -Directory -Filter '*25*' -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty FullName
+        }
+    )
+
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        $homePath = $candidate.Trim().Trim('"')
+        if ([string]::IsNullOrWhiteSpace($homePath)) { continue }
+        if (!(Test-Path -LiteralPath (Join-Path $homePath 'bin/java.exe') -PathType Leaf) -or
+                !(Test-Path -LiteralPath (Join-Path $homePath 'bin/javac.exe') -PathType Leaf)) { continue }
+        if (Select-String -LiteralPath (Join-Path $homePath 'release') -Pattern '^JAVA_VERSION="25(?:[.+-][^"]*)?"$' -Quiet -ErrorAction SilentlyContinue) {
+            return (Resolve-Path -LiteralPath $homePath).Path
+        }
+    }
+}
+
 function Test-SharingViolation($errorRecord) {
     $exception = $errorRecord.Exception.GetBaseException()
     return $exception -is [IO.IOException] -and ($exception.HResult -band 0xFFFF) -in 32, 33
@@ -123,6 +158,14 @@ try {
             }
         }
     }
+
+    $jdk25 = Find-DashJdk25
+    if (!$jdk25) {
+        Write-Host '[ERROR] JDK 25 not found. Install a Windows JDK 25 or point JAVA_HOME to your existing JDK 25 directory.'
+        Write-Host 'CMD example: set "JAVA_HOME=D:\Java\jdk-25"'
+        exit 1
+    }
+    $env:JAVA_HOME = $jdk25
 
     $nicknamePath = Join-Path $PSScriptRoot 'run/dash-nickname.txt'
     $nickname = Read-DashNickname $nicknamePath

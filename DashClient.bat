@@ -7,14 +7,6 @@ pushd "%~dp0" || (
     exit /b 1
 )
 
-set "JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot"
-
-if not exist "%JAVA_HOME%\bin\java.exe" (
-    echo [ERROR] Java 25 not found in "%JAVA_HOME%".
-    set "DASH_EXIT_CODE=1"
-    goto finish
-)
-
 if not exist "%~dp0gradlew.bat" (
     echo [ERROR] Gradle wrapper not found next to DashClient.bat.
     set "DASH_EXIT_CODE=1"
