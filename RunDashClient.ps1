@@ -110,6 +110,66 @@ function Set-DashOpenGlWindowed([string]$gameDir) {
     }
 }
 
+function Test-DashProfileHasSodium([string]$gameDir) {
+    $jars = @(Get-ChildItem -LiteralPath (Join-Path $gameDir 'mods') -Filter '*.jar' -File -ErrorAction SilentlyContinue)
+    if (!$jars.Count) { return $false }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    foreach ($jar in $jars) {
+        try {
+            $archive = [IO.Compression.ZipFile]::OpenRead($jar.FullName)
+            try {
+                $metadata = $archive.GetEntry('fabric.mod.json')
+                if ($null -eq $metadata) { continue }
+                $reader = [IO.StreamReader]::new($metadata.Open())
+                try {
+                    if (($reader.ReadToEnd() | ConvertFrom-Json).id -eq 'sodium') { return $true }
+                } finally {
+                    $reader.Dispose()
+                }
+            } finally {
+                $archive.Dispose()
+            }
+        } catch {
+            # Fabric reports invalid or unreadable mod files when it loads the profile.
+        }
+    }
+    return $false
+}
+
+function Get-DashSodiumJar([string]$gameDir) {
+    if (Test-DashProfileHasSodium $gameDir) { return }
+
+    $legacy = Join-Path $PSScriptRoot 'run/mods/sodium-fabric-0.8.14-mc1.21.11.jar'
+    if (Test-Path -LiteralPath $legacy -PathType Leaf) { return $legacy }
+
+    $directory = Join-Path $PSScriptRoot '.gradle/dash-runtime'
+    $jar = Join-Path $directory 'sodium-fabric-0.8.14+mc1.21.11.jar'
+    $url = 'https://cdn.modrinth.com/data/AANobbMI/versions/rkdTcxoT/sodium-fabric-0.8.14%2Bmc1.21.11.jar'
+    $sha512 = '04C43F9E8534B87A52C42FFD51B0E344D4EF92DC9CC52DA33D13AF6A18BF74B05380D2027F1E0DB982698D0AFF274C42741C1E21B313B0CD75ED3AF005FC98D9'
+    $temporary = "$jar.$([Guid]::NewGuid().ToString('N')).tmp"
+    try {
+        if ((Test-Path -LiteralPath $jar -PathType Leaf) -and
+                (Get-FileHash -LiteralPath $jar -Algorithm SHA512).Hash -eq $sha512) { return $jar }
+
+        [void][IO.Directory]::CreateDirectory($directory)
+        Write-Host 'Downloading Sodium 0.8.14 for Minecraft 1.21.11 (OpenGL)...'
+        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temporary -TimeoutSec 12
+        if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA512).Hash -ne $sha512) {
+            throw 'Downloaded Sodium does not match its published SHA-512.'
+        }
+        if ([IO.File]::Exists($jar)) {
+            [IO.File]::Replace($temporary, $jar, [NullString]::Value)
+        } else {
+            [IO.File]::Move($temporary, $jar)
+        }
+        return $jar
+    } catch {
+        Write-Warning "Sodium is unavailable: $($_.Exception.Message) Starting with the default renderer."
+    } finally {
+        if ([IO.File]::Exists($temporary)) { Remove-Item -LiteralPath $temporary -ErrorAction SilentlyContinue }
+    }
+}
+
 function Test-DashNvidiaOpenGlFailure([string]$gameDir, [datetime]$sinceUtc) {
     foreach ($file in Get-ChildItem -LiteralPath $gameDir -Filter 'hs_err_pid*.log' -File -ErrorAction SilentlyContinue |
             Where-Object LastWriteTimeUtc -GE $sinceUtc) {
@@ -171,6 +231,7 @@ try {
     $nickname = Read-DashNickname $nicknamePath
     $env:DASH_NICKNAME_FILE = $nicknamePath
     $env:DASH_SKIP_STARTUP = $null
+    $env:DASH_SODIUM_JAR = $null
     $runtimeArgs = @()
     $jdkRoot = Join-Path $env:ProgramFiles 'Eclipse Adoptium'
     $jdk21 = Get-ChildItem -LiteralPath $jdkRoot -Filter 'jdk-21.*' -Directory -ErrorAction SilentlyContinue |
@@ -200,6 +261,7 @@ try {
         $launchOpenGl = $true
         Clear-DashVulkanSelection
         Set-DashOpenGlWindowed $rtxDir
+        $env:DASH_SODIUM_JAR = Get-DashSodiumJar $rtxDir
         $gradleArgs = @('--no-daemon', 'runRtxSafeClient')
         Write-Host 'Starting the Dash RTX profile with borderless OpenGL (840 FPS cap)...'
     } else {
@@ -223,6 +285,7 @@ try {
                     Write-Host "$rendererFailure. Restarting once with OpenGL in the same game profile."
                     Clear-DashVulkanSelection
                     Set-DashOpenGlWindowed $rtxDir
+                    $env:DASH_SODIUM_JAR = Get-DashSodiumJar $rtxDir
                     $launchVulkan = $false
                     $launchOpenGl = $true
                     $gradleArgs = @('--no-daemon', 'runRtxSafeClient')

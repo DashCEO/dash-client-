@@ -14,6 +14,10 @@ abstract class CosmicGrassMixin {
     @Inject(method = "getAverageGrassColor", at = @At("RETURN"), cancellable = true)
     private static void dash$shadeGrass(BlockAndTintGetter level, BlockPos pos,
                                        CallbackInfoReturnable<Integer> cir) {
-        cir.setReturnValue(CosmicSky.grassColor(cir.getReturnValueI()));
+        int original = cir.getReturnValueI();
+        int tint = CosmicSky.grassColor(original);
+        if (tint != original) {
+            cir.setReturnValue(tint);
+        }
     }
 }

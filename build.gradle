@@ -28,9 +28,9 @@ loom {
             vmArg '-Dfabric.debug.disableModIds=vulkanmod'
             vmArg '-Ddash.rtxFpsCap=840'
             vmArg '-Ddash.rtxBorderless=true'
-            def sodium = file('run/mods/sodium-fabric-0.8.14-mc1.21.11.jar')
-            if (sodium.isFile()) {
-                vmArg("-Dfabric.addMods=" + sodium.absolutePath)
+            def sodium = providers.environmentVariable('DASH_SODIUM_JAR').orNull
+            if (sodium != null && file(sodium).isFile()) {
+                vmArg("-Dfabric.addMods=" + file(sodium).absolutePath)
             }
         }
     }
